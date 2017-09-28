@@ -1,0 +1,29 @@
+{
+  "name": "fdp",
+  "version": "0.1.1",
+  "description": "Finite Domain Problem reduction system",
+  "main": "dist/fdp.js",
+  "module": "dist/fdp.es.js",
+  "license": "MIT",
+  "repository": "joshtch/fdp",
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "constraint solving",
+    "GSAT",
+    "finite domain solver",
+    "FD",
+    "Constraint Reduction system",
+    "Minifier",
+    "Logic",
+    "Deduction"
+  ],
+  "author": "Peter van der Zee",
+  "contributors": [
+    "Josh Howe"
+  ],
+  "dependencies": {
+    "fdlib": "joshtch/fdlib#build"
+  }
+}
