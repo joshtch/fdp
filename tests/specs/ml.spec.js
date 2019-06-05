@@ -1,5 +1,3 @@
-import expect from '../../../fdlib/tests/lib/mocha_proxy.fixt';
-
 import {
   ML_LTE,
   ML_JMP,
@@ -21,42 +19,42 @@ describe('fdp/ml.spec', function() {
       let buf = new Uint8Array(0);
       _ml_heapSort16bitInline(buf, 0, 0);
 
-      expect(buf).to.eql(new Uint8Array(0));
+      expect(buf).toEqual(new Uint8Array(0));
     });
 
     it('should work with empty list', function() {
       let buf = new Uint8Array(Buffer.from('foobar', 'binary'));
       _ml_heapSort16bitInline(buf, 0, 0);
 
-      expect(buf).to.eql(new Uint8Array(Buffer.from('foobar', 'binary'))); // [ar, fo, ob], unchanged because len=0
+      expect(buf).toEqual(new Uint8Array(Buffer.from('foobar', 'binary'))); // [ar, fo, ob], unchanged because len=0
     });
 
     it('should sort the foobar', function() {
       let buf = new Uint8Array(Buffer.from('foobar', 'binary'));
       _ml_heapSort16bitInline(buf, 0, 3);
 
-      expect(buf).to.eql(new Uint8Array(Buffer.from('arfoob', 'binary'))); // [ar, fo, ob]
+      expect(buf).toEqual(new Uint8Array(Buffer.from('arfoob', 'binary'))); // [ar, fo, ob]
     });
 
     it('should sort the foobar offset 1 till end', function() {
       let buf = new Uint8Array(Buffer.from('\xfffoobar', 'binary'));
       _ml_heapSort16bitInline(buf, 1, 3);
 
-      expect(buf).to.eql(new Uint8Array(Buffer.from('\xffarfoob', 'binary'))); // [255, ar, fo, ob]
+      expect(buf).toEqual(new Uint8Array(Buffer.from('\xffarfoob', 'binary'))); // [255, ar, fo, ob]
     });
 
     it('should sort the foobar offset 1 with suffix', function() {
       let buf = new Uint8Array(Buffer.from('\xfffoobar\xfe', 'binary'));
       _ml_heapSort16bitInline(buf, 1, 3);
 
-      expect(buf).to.eql(new Uint8Array(Buffer.from('\xffarfoob\xfe', 'binary'))); // [255, ar, fo, ob, 254]
+      expect(buf).toEqual(new Uint8Array(Buffer.from('\xffarfoob\xfe', 'binary'))); // [255, ar, fo, ob, 254]
     });
 
     it('should sort the sum args in this regression', function() {
       let buf = new Uint8Array(Buffer.from('\x18\x20\x17\x9b\x17\x62\x17\xc1\x17\xe7\x17\xfa\x17\x75\x17\x88', 'binary'));
       _ml_heapSort16bitInline(buf, 0, 8);
 
-      expect(buf).to.eql(new Uint8Array(Buffer.from('\x17\x62\x17\x75\x17\x88\x17\x9b\x17\xc1\x17\xe7\x17\xfa\x18\x20', 'binary')));
+      expect(buf).toEqual(new Uint8Array(Buffer.from('\x17\x62\x17\x75\x17\x88\x17\x9b\x17\xc1\x17\xe7\x17\xfa\x18\x20', 'binary')));
     });
 
     it('should not copy child value to parent value in heap sort', function() {
@@ -64,7 +62,7 @@ describe('fdp/ml.spec', function() {
       _ml_heapSort16bitInline(buf, 0, 6);
 
       // it's mainly testing a a regression
-      expect(buf).to.eql(new Uint8Array(Buffer.from('\x00\x01\x00\x02\x00\x03\x00\x04\x00\x05\x00\x06', 'binary')));
+      expect(buf).toEqual(new Uint8Array(Buffer.from('\x00\x01\x00\x02\x00\x03\x00\x04\x00\x05\x00\x06', 'binary')));
     });
   });
 
@@ -79,7 +77,7 @@ describe('fdp/ml.spec', function() {
       let offset = ml_getRecycleOffset(ml, 0, 5);
 
       // note: the first will be considered ML_START so the next will be targeted
-      expect(offset).to.eql(1);
+      expect(offset).toEqual(1);
     });
 
     it('should get an empty offset even if its bigger', function() {
@@ -91,7 +89,7 @@ describe('fdp/ml.spec', function() {
       let offset = ml_getRecycleOffset(ml, 0, 5);
 
       // note: the first will be considered ML_START so the next will be targeted
-      expect(offset).to.eql(1);
+      expect(offset).toEqual(1);
     });
 
     it('should fail if there is no empty offset', function() {
@@ -103,7 +101,7 @@ describe('fdp/ml.spec', function() {
       let offset = ml_getRecycleOffset(ml, 0, 9);
 
       // since the first viable offset would be pos=1 and that only has 9 spaces, the search should fail
-      expect(offset).to.eql(undefined);
+      expect(offset).toEqual(undefined);
     });
 
     it('should skip an offset if its too small and still return the next one if its big enough', function() {
@@ -117,7 +115,7 @@ describe('fdp/ml.spec', function() {
       let offset = ml_getRecycleOffset(ml, 0, 9);
 
       // since the first viable offset would be pos=1 and that only has 9 spaces, the search should fail
-      expect(offset).to.eql(9);
+      expect(offset).toEqual(9);
     });
   });
 
@@ -153,7 +151,7 @@ describe('fdp/ml.spec', function() {
       //console.log('want:', expected);
 
       // since the first viable offset would be pos=1 and that only has 9 spaces, the search should fail
-      expect(ml).to.eql(expected);
+      expect(ml).toEqual(expected);
     });
 
     // dunno whether to keep this test at all
@@ -190,7 +188,7 @@ describe('fdp/ml.spec', function() {
       //console.log('want:', expected);
 
       // since the first viable offset would be pos=1 and that only has 9 spaces, the search should fail
-      expect(ml).to.eql(expected);
+      expect(ml).toEqual(expected);
     });
   });
 });

@@ -1,4 +1,4 @@
-// import dsl
+// Import dsl
 // generate ml
 // minimize -> reduce constraints
 // generate propagators
@@ -6,20 +6,13 @@
 // exit
 
 import {
+  ASSERT,
+  ASSERT_NORDOM,
+  TRACE,
   $CHANGED,
   $REJECTED,
   $SOLVED,
   $STABLE,
-
-  ASSERT,
-  ASSERT_NORDOM,
-  getTerm,
-  INSPECT,
-  setTerm,
-  TRACE,
-  THROW,
-} from '../../fdlib/src/helpers';
-import {
   domain__debug,
   domain_arrToSmallest,
   domain_containsValue,
@@ -30,41 +23,26 @@ import {
   domain_middleElement,
   domain_min,
   domain_toArr,
-} from '../../fdlib/src/domain';
+  getTerm,
+  INSPECT,
+  setTerm,
+  THROW,
+} from 'fdlib';
 
-import {
-  ml_countConstraints,
-  ml_getOpList,
-  ml_hasConstraint,
-} from './ml';
-import {
-  dsl2ml,
-} from './dsl2ml';
-import {
-  ml2dsl,
-} from './ml2dsl';
-import {
-  min_run,
-} from './minimizer';
-import {
-  deduper,
-} from './deduper';
-import {
-  cutter,
-} from './cutter';
+import { bounty_collect } from './bounty';
+
+import { cutter } from './cutter';
+import { deduper } from './deduper';
+
+import { dsl2ml } from './dsl2ml';
+import { ml_countConstraints, ml_getOpList, ml_hasConstraint } from './ml';
+import { ml2dsl } from './ml2dsl';
+import { min_run } from './minimizer';
+
 import {
   problem_create,
-  //problem_from,
+  // problem_from,
 } from './problem';
-import {
-  bounty_collect,
-} from './bounty';
-
-// BODY_START
-
-let FDP = {
-  solve: fdpSolver,
-};
 
 /**
  * @param {string} dsl The input problem
@@ -81,34 +59,46 @@ let FDP = {
  * @property {boolean|Function} [fdpOptions.printDslAfter] Print the dsl after crunching it but before calling FD on it
  * @param {Object} solverOptions Passed on to the solver directly
  */
-function fdpSolver(dsl, solver, fdpOptions = {}, solverOptions = {log: 1, vars: 'all'}) {
+function solve(
+  dsl,
+  solver,
+  fdpOptions = {},
+  solverOptions = { log: 1, vars: 'all' }
+) {
   ASSERT(typeof dsl === 'string');
-  ASSERT(typeof fdpOptions !== 'function', 'confirming this isnt the old solver param');
+  ASSERT(
+    typeof fdpOptions !== 'function',
+    'confirming this isnt the old solver param'
+  );
 
-  //fdpOptions.hashNames = false;
-  //fdpOptions.repeatUntilStable = true;
-  //fdpOptions.debugDsl = false;
-  //fdpOptions.singleCycle = true;
-  //fdpOptions.indexNames = true;
-  //fdpOptions.groupedConstraints = true;
+  // fdpOptions.hashNames = false;
+  // fdpOptions.repeatUntilStable = true;
+  // fdpOptions.debugDsl = false;
+  // fdpOptions.singleCycle = true;
+  // fdpOptions.indexNames = true;
+  // fdpOptions.groupedConstraints = true;
 
   if (solverOptions.logger) setTerm(solverOptions.logger);
-  let term = getTerm();
+  const term = getTerm();
 
   term.log('<pre>');
   term.time('</pre>');
-  let r = _preSolver(dsl, solver, fdpOptions, solverOptions);
+  const r = _preSolver(dsl, solver, fdpOptions, solverOptions);
   term.timeEnd('</pre>');
   return r;
 }
+
 function _preSolver(dsl, solver, options, solveOptions) {
   ASSERT(typeof dsl === 'string');
-  ASSERT(typeof options !== 'function', 'making sure this isnt the old Solver param');
+  ASSERT(
+    typeof options !== 'function',
+    'making sure this isnt the old Solver param'
+  );
 
-  let term = getTerm();
+  const term = getTerm();
   term.log('<pre-solving>');
   term.time('</pre-solving total>');
-  let {
+  const {
     hashNames = true,
     debugDsl = false,
     indexNames = false,
@@ -117,51 +107,75 @@ function _preSolver(dsl, solver, options, solveOptions) {
   if (options.hashNames === undefined) options.hashNames = hashNames;
   if (options.debugDsl === undefined) options.debugDsl = debugDsl;
   if (options.indexNames === undefined) options.indexNames = indexNames;
-  if (options.groupedConstraints === undefined) options.groupedConstraints = groupedConstraints;
+  if (options.groupedConstraints === undefined)
+    options.groupedConstraints = groupedConstraints;
 
-  let problem = problem_create();
-  let {
-    varNames,
-    domains,
-  } = problem;
+  const problem = problem_create();
+  const { varNames, domains } = problem;
 
-  TRACE(dsl.slice(0, 1000) + (dsl.length > 1000 ? ' ... <trimmed>' : '') + '\n');
+  TRACE(
+    dsl.slice(0, 1000) + (dsl.length > 1000 ? ' ... <trimmed>' : '') + '\n'
+  );
 
-  let state = crunch(dsl, problem, options);
+  const state = crunch(dsl, problem, options);
 
   let bounty;
   let betweenDsl;
   if (state === $REJECTED) {
-    TRACE('Skipping ml2dsl because problem rejected and bounty/ml2dsl dont handle empty domains well');
+    TRACE(
+      'Skipping ml2dsl because problem rejected and bounty/ml2dsl dont handle empty domains well'
+    );
   } else {
     term.time('ml->dsl');
     bounty = bounty_collect(problem.ml, problem);
-    betweenDsl = ml2dsl(problem.ml, problem, bounty, {debugDsl: false, hashNames: true}); // use default generator settings for dsl to pass on to FD
+    betweenDsl = ml2dsl(problem.ml, problem, bounty, {
+      debugDsl: false,
+      hashNames: true,
+    }); // Use default generator settings for dsl to pass on to FD
     term.timeEnd('ml->dsl');
   }
 
   term.timeEnd('</pre-solving total>');
   if (state === $REJECTED) term.log('REJECTED');
 
-  //term.log(domains.map((d,i) => i+':'+problem.targeted[i]).join(', '));
+  // term.log(domains.map((d,i) => i+':'+problem.targeted[i]).join(', '));
   // confirm domains has no gaps...
-  //term.log(problem.domains)
-  //for (let i=0; i<domains.length; ++i) {
+  // term.log(problem.domains)
+  // for (let i=0; i<domains.length; ++i) {
   //  ASSERT(i in domains, 'no gaps');
   //  ASSERT(domains[i] !== undefined, 'no pseudo gaps');
-  //}
+  // }
 
   // cutter cant reject, only reduce. may eliminate the last standing constraints.
   let solution;
-  if (state === $SOLVED || (state !== $REJECTED && !ml_hasConstraint(problem.ml))) {
+  if (
+    state === $SOLVED ||
+    (state !== $REJECTED && !ml_hasConstraint(problem.ml))
+  ) {
     term.time('- generating early solution');
-    solution = createSolution(problem, null, options, solveOptions.max || Infinity);
+    solution = createSolution(
+      problem,
+      null,
+      options,
+      solveOptions.max || Infinity
+    );
     term.timeEnd('- generating early solution');
   }
 
-  if (state !== $REJECTED && ((betweenDsl && betweenDsl.length < 1000) || options.printDslAfter)) {
-    let dslForLogging = ml2dsl(problem.ml, problem, bounty, options);
-    let s = '\nResult dsl (debugDsl=' + debugDsl + ', hashNames=' + hashNames + ', indexNames=' + indexNames + '):\n' + dslForLogging;
+  if (
+    state !== $REJECTED &&
+    ((betweenDsl && betweenDsl.length < 1000) || options.printDslAfter)
+  ) {
+    const dslForLogging = ml2dsl(problem.ml, problem, bounty, options);
+    const s =
+      '\nResult dsl (debugDsl=' +
+      debugDsl +
+      ', hashNames=' +
+      hashNames +
+      ', indexNames=' +
+      indexNames +
+      '):\n' +
+      dslForLogging;
 
     if (typeof options.printDslAfter === 'function') {
       options.printDslAfter(s);
@@ -173,27 +187,49 @@ function _preSolver(dsl, solver, options, solveOptions) {
   }
 
   if (solution) {
-    term.error('<solved without fdq>');
+    term.log('<solved without fdq>');
     return solution;
   }
+
   if (state === $REJECTED) {
-    term.error('<rejected without fdq>');
+    term.log('<rejected without fdq>');
     TRACE('problem rejected!');
     return 'rejected';
   }
 
   if (problem.input.varstrat === 'throw') {
-    // the stats are for tests. dist will never even have this so this should be fine.
+    // The stats are for tests. dist will never even have this so this should be fine.
     // it's very difficult to ensure optimizations work properly otherwise
-    ASSERT(false, `Forcing a choice with strat=throw; debug: ${varNames.length} vars, ${ml_countConstraints(problem.ml)} constraints, current domain state: ${domains.map((d, i) => i + ':' + varNames[i] + ':' + domain__debug(d).replace(/[a-z()\[\]]/g, '')).join(': ')} (${problem.leafs.length} leafs) ops: ${ml_getOpList(problem.ml)} #`);
+    if (process.env.NODE_ENV !== 'production') {
+      ASSERT(
+        false,
+        `Forcing a choice with strat=throw; debug: ${
+          varNames.length
+        } vars, ${ml_countConstraints(
+          problem.ml
+        )} constraints, current domain state: ${domains
+          .map(
+            (d, i) =>
+              i +
+              ':' +
+              varNames[i] +
+              ':' +
+              domain__debug(d).replace(/[a-z()\[\]]/g, '')
+          )
+          .join(': ')} (${problem.leafs.length} leafs) ops: ${ml_getOpList(
+          problem.ml
+        )} #`
+      );
+    }
+
     THROW('Forcing a choice with strat=throw');
   }
 
-  term.error('\n\nSolving remaining problem through fdq now...');
+  term.log('\n\nSolving remaining problem through fdq now...');
 
   term.log('<FD>');
   term.time('</FD>');
-  let fdSolution = solver(betweenDsl, solveOptions);
+  const fdSolution = solver(betweenDsl, solveOptions);
   term.timeEnd('</FD>');
   term.log('\n');
 
@@ -205,27 +241,42 @@ function _preSolver(dsl, solver, options, solveOptions) {
   // are temporary vars generated by fdq. We should not see them
   // anymore once we support targeted vars.
 
-  term.log('fd result:', typeof fdSolution === 'string' ? fdSolution : 'SOLVED');
+  term.log(
+    'fd result:',
+    typeof fdSolution === 'string' ? fdSolution : 'SOLVED'
+  );
 
-  TRACE('fdSolution = ', fdSolution ? Object.keys(fdSolution).length > 100 ? '<supressed; too big>' : fdSolution : 'REJECT');
+  TRACE(
+    'fdSolution = ',
+    fdSolution
+      ? Object.keys(fdSolution).length > 100
+        ? '<supressed; too big>'
+        : fdSolution
+      : 'REJECT'
+  );
 
   if (fdSolution && typeof fdSolution !== 'string') {
-    term.error('<solved after fdq>');
-    return createSolution(problem, fdSolution, options, solveOptions.max || Infinity);
+    term.log('<solved after fdq>');
+    if (Array.isArray(fdSolution)) {
+      return fdSolution.map(sol => createSolution(problem, sol, options, solveOptions.max || Infinity));
+    }
+    return createSolution(
+      problem,
+      fdSolution,
+      options,
+      solveOptions.max || Infinity
+    );
   }
 
-  term.error('<' + fdSolution + ' during fdq>');
+  term.log('<' + fdSolution + ' during fdq>');
   TRACE('problem rejected!');
   return 'rejected';
 }
 
 function crunch(dsl, problem, options = {}) {
-  let {
-    singleCycle = false,
-    repeatUntilStable = true,
-  } = options;
+  const { singleCycle = false, repeatUntilStable = true } = options;
 
-  let {
+  const {
     varNames,
     domains,
     solveStack,
@@ -235,18 +286,20 @@ function crunch(dsl, problem, options = {}) {
     $getAlias,
   } = problem;
 
-  let term = getTerm();
+  const term = getTerm();
 
   term.time('- dsl->ml');
   dsl2ml(dsl, problem);
-  let ml = problem.ml;
+  const { ml } = problem;
   term.timeEnd('- dsl->ml');
 
-  term.log('Parsed dsl (' + dsl.length + ' bytes) into ml (' + ml.length + ' bytes)');
+  term.log(
+    'Parsed dsl (' + dsl.length + ' bytes) into ml (' + ml.length + ' bytes)'
+  );
 
   if (options.printDslBefore) {
-    let bounty = bounty_collect(problem.ml, problem);
-    let predsl = ml2dsl(ml, problem, bounty, options);
+    const bounty = bounty_collect(problem.ml, problem);
+    const predsl = ml2dsl(ml, problem, bounty, options);
     if (typeof options.printDslBefore === 'function') {
       options.printDslBefore(predsl);
     } else {
@@ -257,7 +310,8 @@ function crunch(dsl, problem, options = {}) {
   }
 
   let state;
-  if (singleCycle) { // only single cycle? usually most dramatic reduction. only runs a single loop of every step.
+  if (singleCycle) {
+    // Only single cycle? usually most dramatic reduction. only runs a single loop of every step.
     term.time('- first minimizer cycle (single loop)');
 
     state = min_run(ml, problem, domains, varNames, true, !repeatUntilStable);
@@ -266,7 +320,7 @@ function crunch(dsl, problem, options = {}) {
 
     if (state !== $REJECTED) {
       term.time('- deduper cycle #');
-      let deduperAddedAlias = deduper(ml, problem);
+      const deduperAddedAlias = deduper(ml, problem);
       term.timeEnd('- deduper cycle #');
 
       if (deduperAddedAlias >= 0) {
@@ -275,21 +329,45 @@ function crunch(dsl, problem, options = {}) {
         term.timeEnd('- cutter cycle #');
       }
     }
-  } else { // multiple cycles? more expensive, may not be worth the gains
+  } else {
+    // Multiple cycles? more expensive, may not be worth the gains
     let runLoops = 0;
     term.time('- all run cycles');
     do {
       TRACE('run loop...');
-      state = run_cycle(ml, $getVar, $addVar, domains, varNames, $addAlias, $getAlias, solveStack, runLoops++, problem);
+      state = run_cycle(
+        ml,
+        $getVar,
+        $addVar,
+        domains,
+        varNames,
+        $addAlias,
+        $getAlias,
+        solveStack,
+        runLoops++,
+        problem
+      );
     } while (state === $CHANGED);
+
     term.timeEnd('- all run cycles');
   }
 
   return state;
 }
 
-function run_cycle(ml, getVar, addVar, domains, vars, addAlias, getAlias, solveStack, runLoops, problem) {
-  let term = getTerm();
+function run_cycle(
+  ml,
+  getVar,
+  addVar,
+  domains,
+  vars,
+  addAlias,
+  getAlias,
+  solveStack,
+  runLoops,
+  problem
+) {
+  const term = getTerm();
   term.time('- run_cycle #' + runLoops);
 
   term.time('- minimizer cycle #' + runLoops);
@@ -300,20 +378,23 @@ function run_cycle(ml, getVar, addVar, domains, vars, addAlias, getAlias, solveS
   if (state === $REJECTED) return state;
 
   term.time('- deduper cycle #' + runLoops);
-  let deduperAddedAlias = deduper(ml, problem);
+  const deduperAddedAlias = deduper(ml, problem);
   term.timeEnd('- deduper cycle #' + runLoops);
 
   if (deduperAddedAlias < 0) {
     state = $REJECTED;
   } else {
     term.time('- cutter cycle #' + runLoops);
-    let cutLoops = cutter(ml, problem, false);
+    const cutLoops = cutter(ml, problem, false);
     term.timeEnd('- cutter cycle #' + runLoops);
 
     if (cutLoops > 1 || deduperAddedAlias) state = $CHANGED;
     else if (cutLoops < 0) state = $REJECTED;
     else {
-      ASSERT(state === $CHANGED || state === $STABLE, 'minimize state should be either stable or changed here');
+      ASSERT(
+        state === $CHANGED || state === $STABLE,
+        'minimize state should be either stable or changed here'
+      );
     }
   }
 
@@ -324,20 +405,12 @@ function run_cycle(ml, getVar, addVar, domains, vars, addAlias, getAlias, solveS
 function createSolution(problem, fdSolution, options, max) {
   getTerm().time('createSolution()');
 
-  let {
-    flattened = false,
-  } = options;
+  const { flattened = false } = options;
 
-  let {
-    varNames,
-    domains,
-    solveStack,
-    getAlias,
-    targeted,
-  } = problem;
+  const { varNames, domains, solveStack, getAlias, targeted } = problem;
 
-  let _getDomainWithoutFd = problem.getDomain;
-  let _setDomainWithoutFd = problem.setDomain;
+  const _getDomainWithoutFd = problem.getDomain;
+  const _setDomainWithoutFd = problem.setDomain;
 
   function getDomainFromSolverOrLocal(index, skipAliasCheck) {
     if (!skipAliasCheck) index = getAlias(index);
@@ -347,7 +420,7 @@ function createSolution(problem, fdSolution, options, max) {
       let fdval = fdSolution[key];
       if (typeof fdval === 'number') {
         return domain_createValue(fdval);
-      } else if (fdval !== undefined) {
+      } if (fdval !== undefined) {
         ASSERT(fdval instanceof Array, 'expecting fdq to only create solutions as arrays or numbers', fdval);
         return domain_arrToSmallest(fdval);
       }
@@ -357,52 +430,100 @@ function createSolution(problem, fdSolution, options, max) {
     return _getDomainWithoutFd(index, true);
   }
 
-  function setDomainInFdAndLocal(index, domain, skipAliasCheck, forPseudoAlias) {
-    TRACE(' - solveStackSetDomain, index=', index, ', domain=', domain__debug(domain), ', skipAliasCheck=', skipAliasCheck, ', forPseudoAlias=', forPseudoAlias);
+  function setDomainInFdAndLocal(
+    index,
+    domain,
+    skipAliasCheck,
+    forPseudoAlias
+  ) {
+    TRACE(
+      ' - solveStackSetDomain, index=',
+      index,
+      ', domain=',
+      domain__debug(domain),
+      ', skipAliasCheck=',
+      skipAliasCheck,
+      ', forPseudoAlias=',
+      forPseudoAlias
+    );
     ASSERT(domain, 'should not set an empty domain at this point');
-    ASSERT(forPseudoAlias || domain_intersection(_getDomainWithoutFd(index), domain) === domain, 'should not introduce values into the domain that did not exist before unless for xnor pseudo-booly; current:', domain__debug(_getDomainWithoutFd(index)), ', updating to:', domain__debug(domain), 'varIndex:', index);
+    ASSERT(
+      forPseudoAlias ||
+        domain_intersection(_getDomainWithoutFd(index), domain) === domain,
+      'should not introduce values into the domain that did not exist before unless for xnor pseudo-booly; current:',
+      domain__debug(_getDomainWithoutFd(index)),
+      ', updating to:',
+      domain__debug(domain),
+      'varIndex:',
+      index
+    );
 
     if (!skipAliasCheck) index = getAlias(index);
     _setDomainWithoutFd(index, domain, true, false, forPseudoAlias);
 
-    // update the FD result AND the local data structure to reflect this new domain
+    // Update the FD result AND the local data structure to reflect this new domain
     // the FD value rules when checking intersection with the new domain
     // (but we can just use the getter abstraction here and overwrite regardless)
 
     if (fdSolution) {
-      let key = '$' + index.toString(36) + '$';
+      const key = '$' + index.toString(36) + '$';
       if (fdSolution[key] !== undefined) {
-        let v = domain_getValue(domain);
+        const v = domain_getValue(domain);
         if (v >= 0) fdSolution[key] = v;
         else fdSolution[key] = domain_toArr(domain);
       }
     }
   }
 
-
   function force(varIndex, pseudoDomain) {
-    ASSERT(typeof varIndex === 'number' && varIndex >= 0 && varIndex <= 0xffff, 'valid var to solve', varIndex);
-    let finalVarIndex = getAlias(varIndex);
+    ASSERT(
+      typeof varIndex === 'number' && varIndex >= 0 && varIndex <= 0xffff,
+      'valid var to solve',
+      varIndex
+    );
+    const finalVarIndex = getAlias(varIndex);
     let domain = getDomainFromSolverOrLocal(finalVarIndex, true); // NOTE: this will take from fdSolution if it contains a value, otherwise from local domains
     ASSERT_NORDOM(domain);
-    ASSERT(pseudoDomain === undefined || domain_intersection(pseudoDomain, domain) === pseudoDomain, 'pseudoDomain should not introduce new values');
+    ASSERT(
+      pseudoDomain === undefined ||
+        domain_intersection(pseudoDomain, domain) === pseudoDomain,
+      'pseudoDomain should not introduce new values'
+    );
 
     let v = domain_getValue(domain);
     if (v < 0) {
       if (pseudoDomain) {
-        TRACE('   - force() using pseudo domain', domain__debug(pseudoDomain), 'instead of actual domain', domain__debug(domain));
+        TRACE(
+          '   - force() using pseudo domain',
+          domain__debug(pseudoDomain),
+          'instead of actual domain',
+          domain__debug(domain)
+        );
         domain = pseudoDomain;
       }
-      TRACE('   - forcing index', varIndex, '(final index=', finalVarIndex, ') to min(' + domain__debug(domain) + '):', domain_min(domain));
-      let dist = problem.valdist[varIndex];
+
+      TRACE(
+        '   - forcing index',
+        varIndex,
+        '(final index=',
+        finalVarIndex,
+        ') to min(' + domain__debug(domain) + '):',
+        domain_min(domain)
+      );
+      const dist = problem.valdist[varIndex];
       if (dist) {
         ASSERT(typeof dist === 'object', 'dist is an object');
-        ASSERT(typeof dist.valtype === 'string', 'dist object should have a name'); // TODO: rename valtype to "name"? or maybe keep it this way because easier to search for anyways. *shrug*
+        ASSERT(
+          typeof dist.valtype === 'string',
+          'dist object should have a name'
+        ); // TODO: rename valtype to "name"? or maybe keep it this way because easier to search for anyways. *shrug*
         switch (dist.valtype) {
           case 'list':
-            ASSERT(dist.list instanceof Array, 'lists should have a prio');
-            dist.list.some(w => domain_containsValue(domain, w) && (v = w) >= 0);
-            if (v < 0) v = domain_min(domain); // none of the prioritized values still exist so just pick one
+            ASSERT(Array.isArray(dist.list), 'lists should have a prio');
+            dist.list.some(
+              w => domain_containsValue(domain, w) && (v = w) >= 0
+            );
+            if (v < 0) v = domain_min(domain); // None of the prioritized values still exist so just pick one
             break;
           case 'max':
             v = domain_max(domain);
@@ -425,106 +546,263 @@ function createSolution(problem, fdSolution, options, max) {
             THROW('Unknown dist name: [' + dist.valtype + ']', dist);
         }
       } else {
-        // just an arbitrary choice then
+        // Just an arbitrary choice then
         v = domain_min(domain);
       }
 
-      ASSERT(domain_containsValue(domain, v), 'force() should not introduce new values');
+      ASSERT(
+        domain_containsValue(domain, v),
+        'force() should not introduce new values'
+      );
       setDomainInFdAndLocal(varIndex, domain_createValue(v), true);
     }
+
     return v;
   }
 
-  TRACE('\n# createSolution(), solveStack.length=', solveStack.length, ', using fdSolution?', !!fdSolution);
-  TRACE(' - fdSolution:', domains.length < 50 ? INSPECT(fdSolution).replace(/\n/g, '') : '<big>');
-  TRACE(' - domains:', domains.length < 50 ? domains.map((_, i) => '{index=' + i + ',name=' + problem.varNames[i] + ',' + domain__debug(problem.getDomain(i)) + '}').join(', ') : '<big>');
+  TRACE(
+    '\n# createSolution(), solveStack.length=',
+    solveStack.length,
+    ', using fdSolution?',
+    !!fdSolution
+  );
+  TRACE(
+    ' - fdSolution:',
+    domains.length < 50 ? INSPECT(fdSolution).replace(/\n/g, '') : '<big>'
+  );
+  TRACE(
+    ' - domains:',
+    domains.length < 50
+      ? domains
+          .map(
+            (_, i) =>
+              '{index=' +
+              i +
+              ',name=' +
+              problem.varNames[i] +
+              ',' +
+              domain__debug(problem.getDomain(i)) +
+              '}'
+          )
+          .join(', ')
+      : '<big>'
+  );
 
-  ASSERT(domains.length < 50 || !void TRACE('domains before; index, unaliased, aliased, fdSolution (if any):\n', domains.map((d, i) => i + ': ' + domain__debug(d) + ', ' + domain__debug(_getDomainWithoutFd(i)) + ', ' + domain__debug(getDomainFromSolverOrLocal(i)))));
+  ASSERT(
+    domains.length < 50 ||
+      !void TRACE(
+        'domains before; index, unaliased, aliased, fdSolution (if any):\n',
+        domains.map(
+          (d, i) =>
+            i +
+            ': ' +
+            domain__debug(d) +
+            ', ' +
+            domain__debug(_getDomainWithoutFd(i)) +
+            ', ' +
+            domain__debug(getDomainFromSolverOrLocal(i))
+        )
+      )
+  );
 
   function flushSolveStack() {
-    TRACE('Flushing solve stack...', solveStack.length ? '' : ' and done! (solve stack was empty)');
-    let rev = solveStack.reverse();
+    TRACE(
+      'Flushing solve stack...',
+      solveStack.length ? '' : ' and done! (solve stack was empty)'
+    );
+    const rev = solveStack.reverse();
     for (let i = 0; i < rev.length; ++i) {
-      let f = rev[i];
+      const f = rev[i];
       TRACE('- solve stack entry', i);
       f(domains, force, getDomainFromSolverOrLocal, setDomainInFdAndLocal);
 
-      TRACE(domains.length < 50 ? ' - domains now: ' + domains.map((_, i) => '{index=' + i + ',name=' + problem.varNames[i] + ',' + domain__debug(problem.getDomain(i)) + '}').join(', ') : '');
+      TRACE(
+        domains.length < 50
+          ? ' - domains now: ' +
+              domains
+                .map(
+                  (_, i) =>
+                    '{index=' +
+                    i +
+                    ',name=' +
+                    problem.varNames[i] +
+                    ',' +
+                    domain__debug(problem.getDomain(i)) +
+                    '}'
+                )
+                .join(', ')
+          : ''
+      );
     }
-    ASSERT(domains.length < 50 || !void TRACE('domains after solve stack flush; index, unaliased, aliased, fdSolution (if any):\n', domains.map((d, i) => i + ': ' + domain__debug(d) + ', ' + domain__debug(_getDomainWithoutFd(i)) + ', ' + domain__debug(getDomainFromSolverOrLocal(i)))));
+
+    ASSERT(
+      domains.length < 50 ||
+        !void TRACE(
+          'domains after solve stack flush; index, unaliased, aliased, fdSolution (if any):\n',
+          domains.map(
+            (d, i) =>
+              i +
+              ': ' +
+              domain__debug(d) +
+              ', ' +
+              domain__debug(_getDomainWithoutFd(i)) +
+              ', ' +
+              domain__debug(getDomainFromSolverOrLocal(i))
+          )
+        )
+    );
   }
+
   flushSolveStack();
 
-  ASSERT(!void domains.forEach((d, i) => ASSERT(domains[i] === false ? getAlias(i) !== i : ASSERT_NORDOM(d), 'domains should be aliased or nordom at this point', 'index=' + i, ', alias=', getAlias(i), ', domain=' + domain__debug(d), domains)));
+  ASSERT(
+    !void domains.forEach((d, i) =>
+      ASSERT(
+        domains[i] === false ? getAlias(i) !== i : ASSERT_NORDOM(d),
+        'domains should be aliased or nordom at this point',
+        'index=' + i,
+        ', alias=',
+        getAlias(i),
+        ', domain=' + domain__debug(d),
+        domains
+      )
+    )
+  );
 
   function flushValDists() {
-    TRACE('\n# flushValDists: One last loop through all vars to force those with a valdist');
+    TRACE(
+      '\n# flushValDists: One last loop through all vars to force those with a valdist'
+    );
     for (let i = 0; i < domains.length; ++i) {
       if (flattened || problem.valdist[i]) {
-        // can ignore FD here (I think)
+        // Can ignore FD here (I think)
         _setDomainWithoutFd(i, domain_createValue(force(i)), true);
       } else {
         // TOFIX: make this more efficient... (cache the domain somehow)
-        let domain = getDomainFromSolverOrLocal(i);
-        let v = domain_getValue(domain);
+        const domain = getDomainFromSolverOrLocal(i);
+        const v = domain_getValue(domain);
         if (v >= 0) {
-          // can ignore FD here (I think)
+          // Can ignore FD here (I think)
           _setDomainWithoutFd(i, domain, true);
         }
       }
     }
   }
+
   flushValDists();
   TRACE('\n');
 
-  ASSERT(domains.length < 50 || !void TRACE('domains after dist pops; index, unaliased, aliased, fdSolution (if any):\n', domains.map((d, i) => i + ': ' + domain__debug(d) + ', ' + domain__debug(_getDomainWithoutFd(i)) + ', ' + domain__debug(getDomainFromSolverOrLocal(i)))));
-  ASSERT(!void domains.forEach((d, i) => ASSERT(d === false ? getAlias(i) !== i : (flattened ? domain_getValue(d) >= 0 : ASSERT_NORDOM(d)), 'domains should be aliased or nordom at this point', 'index=' + i, ', alias=', getAlias(i), 'domain=' + domain__debug(d), domains)));
+  ASSERT(
+    domains.length < 50 ||
+      !void TRACE(
+        'domains after dist pops; index, unaliased, aliased, fdSolution (if any):\n',
+        domains.map(
+          (d, i) =>
+            i +
+            ': ' +
+            domain__debug(d) +
+            ', ' +
+            domain__debug(_getDomainWithoutFd(i)) +
+            ', ' +
+            domain__debug(getDomainFromSolverOrLocal(i))
+        )
+      )
+  );
+  ASSERT(
+    !void domains.forEach((d, i) =>
+      ASSERT(
+        d === false
+          ? getAlias(i) !== i
+          : flattened
+          ? domain_getValue(d) >= 0
+          : ASSERT_NORDOM(d),
+        'domains should be aliased or nordom at this point',
+        'index=' + i,
+        ', alias=',
+        getAlias(i),
+        'domain=' + domain__debug(d),
+        domains
+      )
+    )
+  );
 
   function flushAliases() {
     TRACE(' - syncing aliases');
     for (let i = 0; i < domains.length; ++i) {
-      let d = domains[i];
+      const d = domains[i];
       if (d === false) {
-        let a = getAlias(i);
-        let v = force(a);
-        TRACE('Forcing', i, 'and', a, 'to be equal because they are aliased, resulting value=', v);
-        // can ignore FD here (I think)
+        const a = getAlias(i);
+        const v = force(a);
+        TRACE(
+          'Forcing',
+          i,
+          'and',
+          a,
+          'to be equal because they are aliased, resulting value=',
+          v
+        );
+        // Can ignore FD here (I think)
         _setDomainWithoutFd(i, domain_createValue(v), true);
       }
     }
   }
+
   flushAliases();
 
-  ASSERT(domains.length < 50 || !void TRACE('domains after dealiasing; index, unaliased, aliased, fdSolution (if any):\n', domains.map((d, i) => i + ': ' + domain__debug(d) + ', ' + domain__debug(_getDomainWithoutFd(i)) + ', ' + domain__debug(getDomainFromSolverOrLocal(i)))));
+  ASSERT(
+    domains.length < 50 ||
+      !void TRACE(
+        'domains after dealiasing; index, unaliased, aliased, fdSolution (if any):\n',
+        domains.map(
+          (d, i) =>
+            i +
+            ': ' +
+            domain__debug(d) +
+            ', ' +
+            domain__debug(_getDomainWithoutFd(i)) +
+            ', ' +
+            domain__debug(getDomainFromSolverOrLocal(i))
+        )
+      )
+  );
 
   function generateFinalSolution() {
     TRACE(' - generating regular FINAL solution', flattened);
-    let solution = {};
+    const solution = {};
     for (let index = 0; index < varNames.length; ++index) {
       if (targeted[index]) {
-        let name = varNames[index];
+        const name = varNames[index];
         let d = getDomainFromSolverOrLocal(index);
-        let v = domain_getValue(d);
+        const v = domain_getValue(d);
         if (v >= 0) {
           d = v;
         } else if (flattened) {
-          ASSERT(!problem.valdist[index], 'only vars without valdist may not be solved at this point');
+          ASSERT(
+            !problem.valdist[index],
+            'only vars without valdist may not be solved at this point'
+          );
           d = domain_min(d);
         } else {
           d = domain_toArr(d);
         }
+
         solution[name] = d;
       }
     }
+
     return solution;
   }
-  let solution = generateFinalSolution();
+
+  const solution = generateFinalSolution();
 
   getTerm().timeEnd('createSolution()');
-  TRACE(' -> createSolution results in:', domains.length > 100 ? '<supressed; too many vars (' + domains.length + ')>' : solution);
+  TRACE(
+    ' -> createSolution results in:',
+    domains.length > 100
+      ? '<supressed; too many vars (' + domains.length + ')>'
+      : solution
+  );
   return solution;
 }
 
-// BODY_STOP
-
-export default FDP;
+export default { solve };

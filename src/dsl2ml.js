@@ -1,17 +1,14 @@
-// this is an import function for config
+// This is an import function for config
 // it converts a DSL string to a $config
 // see /docs/dsl.txt for syntax
 // see exporter.js to convert a config to this DSL
-import {
-  SUB,
-  SUP,
-  ASSERT,
-  getTerm,
-  TRACE,
-} from '../../fdlib/src/helpers';
-import {
-  domain_createRange,
-} from '../../fdlib/src/domain';
+import { ASSERT, TRACE } from 'fdlib';
+
+import { SUB, SUP } from 'fdlib';
+
+import { domain_createRange } from 'fdlib';
+
+import { getTerm } from 'fdlib';
 
 import {
   ML_ALL,
@@ -48,14 +45,11 @@ import {
   ML_SUM,
   ML_XNOR,
   ML_XOR,
-
   SIZEOF_V,
   SIZEOF_W,
 } from './ml';
 
-// BODY_START
-
-// ords (number matching is faster, especially since we use a buffer anyways)
+// Ords (number matching is faster, especially since we use a buffer anyways)
 const $$AND = 38;
 const $$AT = 64;
 const $$BANG = 33;
@@ -120,20 +114,19 @@ const $$Z = 98;
  * @returns {string}
  */
 function dsl2ml(dslStr, problem, _debug) {
-  TRACE('# dsl2ml:', [dslStr.slice(0, 100).replace(/ +/g, ' ') + (dslStr.replace(/ +/g, ' ').length > 100 ? '...' : '')]);
+  TRACE('# dsl2ml:', [
+    dslStr.slice(0, 100).replace(/ +/g, ' ') +
+      (dslStr.replace(/ +/g, ' ').length > 100 ? '...' : ''),
+  ]);
 
   problem.input.varstrat = 'default';
   problem.input.valstrat = 'default';
   problem.input.dsl = dslStr;
 
-  let {
-    addVar,
-    setDomain,
-    name2index,
-  } = problem;
+  const { addVar, setDomain, name2index } = problem;
 
   let constraints = 0;
-  let freeDirective = -1; // for `@custom free x`. this var tries to ensure exactly x bytes are "free"
+  let freeDirective = -1; // For `@custom free x`. this var tries to ensure exactly x bytes are "free"
 
   let dslPointer = 0;
 
@@ -143,14 +136,15 @@ function dsl2ml(dslStr, problem, _debug) {
   } else {
     dslBuf = new Uint8Array(Buffer.from(dslStr, 'binary'));
   }
+
   ASSERT(dslBuf instanceof Uint8Array);
-  let len = dslBuf.length;
+  const len = dslBuf.length;
 
   let mlBufSize = Math.ceil(dslBuf.length / 5); // 20% is arbitrary choice. grown dynamically when needed
   let mlBuffer = new Uint8Array(mlBufSize).fill(0);
   let mlPointer = 0;
 
-  // this is for a hack
+  // This is for a hack
   let lastAssignmentIndex = -1;
   let lastUnknownIndex = -1;
 
@@ -159,38 +153,55 @@ function dsl2ml(dslStr, problem, _debug) {
   while (!isEof()) parseStatement();
 
   if (freeDirective > 0) {
-    // compile a jump of given size. this will be considered available space
+    // Compile a jump of given size. this will be considered available space
     TRACE('forcing', freeDirective, 'bytes of available space');
     compileJump(freeDirective);
   }
 
-  encode8bit(ML_STOP); // this step will be undone but serves to ensure the buffer isnt grown in the actual compilation step (which happens after the available-space-checks)
+  encode8bit(ML_STOP); // This step will be undone but serves to ensure the buffer isnt grown in the actual compilation step (which happens after the available-space-checks)
   --mlPointer;
 
   if (freeDirective < 0) {
-    // compile a jump for the remainder of the space, if any, which could be used by the recycle mechanisms
+    // Compile a jump for the remainder of the space, if any, which could be used by the recycle mechanisms
     // only do this here when the free directive is absent
-    let leftFree = (mlBufSize - mlPointer) - 1; // STOP will occupy 1 byte
+    const leftFree = mlBufSize - mlPointer - 1; // STOP will occupy 1 byte
     TRACE('space available', leftFree, 'bytes');
     if (leftFree > 0) compileJump(leftFree);
   }
 
-  encode8bit(ML_STOP); // put the STOP at the end
+  encode8bit(ML_STOP); // Put the STOP at the end
 
   // if there is now still space left, we need to crop it because freeDirective was set and didnt consume it all
   if (mlBufSize - mlPointer) {
-    TRACE('cropping excess available space', mlBufSize, mlPointer, mlBufSize - mlPointer);
-    // if the free directive was given, remove any excess free space
+    TRACE(
+      'cropping excess available space',
+      mlBufSize,
+      mlPointer,
+      mlBufSize - mlPointer
+    );
+    // If the free directive was given, remove any excess free space
     // note that one more byte needs to be compiled after this (ML_STOP)
-    mlBuffer = mlBuffer.slice(0, mlPointer);
+    mlBuffer.splice(mlPointer);
   }
-  ASSERT(mlPointer === mlBuffer.length, 'mlPointer should now be at the first unavailable cell of the buffer', mlPointer, mlBuffer.length, mlBuffer);
+
+  ASSERT(
+    mlPointer === mlBuffer.length,
+    'mlPointer should now be at the first unavailable cell of the buffer',
+    mlPointer,
+    mlBuffer.length,
+    mlBuffer
+  );
 
   problem.ml = mlBuffer;
   if (!problem.input.targets) problem.input.targets = 'all';
 
-  getTerm().log('# dsl2ml: parsed', constraints, 'constraints and', problem.domains.length, 'vars');
-  return;
+  getTerm().log(
+    '# dsl2ml: parsed',
+    constraints,
+    'constraints and',
+    problem.domains.length,
+    'vars'
+  );
 
   // ########################################################################
 
@@ -201,7 +212,14 @@ function dsl2ml(dslStr, problem, _debug) {
 
   function encode8bit(num) {
     ASSERT(typeof num === 'number' && num >= 0 && num <= 0xff, 'OOB number');
-    TRACE('encode8bit:', num, 'dsl pointer:', dslPointer, ', ml pointer:', mlPointer);
+    TRACE(
+      'encode8bit:',
+      num,
+      'dsl pointer:',
+      dslPointer,
+      ', ml pointer:',
+      mlPointer
+    );
 
     if (mlPointer >= mlBufSize) grow();
 
@@ -209,8 +227,25 @@ function dsl2ml(dslStr, problem, _debug) {
   }
 
   function encode16bit(num) {
-    TRACE('encode16bit:', num, '->', num >> 8, num & 0xff, 'dsl pointer:', dslPointer, ', ml pointer:', mlPointer, '/', mlBufSize);
-    ASSERT(typeof num === 'number', 'Encoding 16bit must be num', typeof num, num);
+    TRACE(
+      'encode16bit:',
+      num,
+      '->',
+      num >> 8,
+      num & 0xff,
+      'dsl pointer:',
+      dslPointer,
+      ', ml pointer:',
+      mlPointer,
+      '/',
+      mlBufSize
+    );
+    ASSERT(
+      typeof num === 'number',
+      'Encoding 16bit must be num',
+      typeof num,
+      num
+    );
     ASSERT(num >= 0, 'OOB num', num);
     if (num > 0xffff) THROW('Need 32bit num support but missing it', num);
 
@@ -221,8 +256,25 @@ function dsl2ml(dslStr, problem, _debug) {
   }
 
   function encode32bit(num) {
-    TRACE('encode32bit:', num, '->', (num >> 24) & 0xff, (num >> 16) & 0xff, (num >> 8) & 0xff, num & 0xff, 'dsl pointer:', dslPointer, ', ml pointer:', mlPointer);
-    ASSERT(typeof num === 'number', 'Encoding 32bit must be num', typeof num, num);
+    TRACE(
+      'encode32bit:',
+      num,
+      '->',
+      (num >> 24) & 0xff,
+      (num >> 16) & 0xff,
+      (num >> 8) & 0xff,
+      num & 0xff,
+      'dsl pointer:',
+      dslPointer,
+      ', ml pointer:',
+      mlPointer
+    );
+    ASSERT(
+      typeof num === 'number',
+      'Encoding 32bit must be num',
+      typeof num,
+      num
+    );
     ASSERT(num >= 0, 'OOB num', num);
     if (num > 0xffffffff) THROW('This requires 64bit support', num);
 
@@ -238,16 +290,28 @@ function dsl2ml(dslStr, problem, _debug) {
     TRACE(' - grow(' + (forcedExtraSpace || '') + ') from', mlBufSize);
     // grow the buffer by 10% or `forcedExtraSpace`
     // you can't really grow existing buffers, instead you create a bigger buffer and copy the old one into it...
-    let oldSize = mlBufSize;
+    const oldSize = mlBufSize;
     if (forcedExtraSpace) mlBufSize += forcedExtraSpace;
     else mlBufSize += Math.max(Math.ceil(mlBufSize * 0.1), 10);
-    ASSERT(mlBufSize > mlBuffer.length, 'grow() should grow() at least a bit...', mlBuffer.length, '->', mlBufSize);
+    ASSERT(
+      mlBufSize > mlBuffer.length,
+      'grow() should grow() at least a bit...',
+      mlBuffer.length,
+      '->',
+      mlBufSize
+    );
 
     if (typeof Buffer === 'undefined') {
-      if (ArrayBuffer.transfer) mlBuffer = new Uint8Array(ArrayBuffer.transfer(mlBuffer.buffer, mlBufSize));
-      else mlBuffer = new Uint8Array(ArrayBufferTransferPoly(mlBuffer.buffer, mlBufSize));
+      if (ArrayBuffer.transfer)
+        mlBuffer = new Uint8Array(
+          ArrayBuffer.transfer(mlBuffer.buffer, mlBufSize)
+        );
+      else
+        mlBuffer = new Uint8Array(
+          ArrayBufferTransferPoly(mlBuffer.buffer, mlBufSize)
+        );
     } else {
-      mlBuffer = new Uint8Array(Buffer.concat([mlBuffer], mlBufSize)); // wont actually concat, but will copy the existing buffer into a buffer of given size
+      mlBuffer = new Uint8Array(Buffer.concat([mlBuffer], mlBufSize)); // Wont actually concat, but will copy the existing buffer into a buffer of given size
       mlBuffer.fill(0, oldSize);
     }
 
@@ -262,7 +326,8 @@ function dsl2ml(dslStr, problem, _debug) {
     return dslBuf[dslPointer + delta];
   }
 
-  function substr_expensive(start, stop) { // use sparingly!
+  function substr_expensive(start, stop) {
+    // Use sparingly!
     return String.fromCharCode(...dslBuf.slice(start, stop));
   }
 
@@ -272,7 +337,8 @@ function dsl2ml(dslStr, problem, _debug) {
 
   function is(c, desc) {
     if (!desc) desc = '';
-    if (read() !== c) THROW('Expected ' + desc + ' `' + c + '`, found `' + read() + '`');
+    if (read() !== c)
+      THROW('Expected ' + desc + ' `' + c + '`, found `' + read() + '`');
     skip();
   }
 
@@ -282,7 +348,7 @@ function dsl2ml(dslStr, problem, _debug) {
 
   function skipWhites() {
     while (!isEof()) {
-      let c = read();
+      const c = read();
       if (isWhite(c)) {
         skip();
       } else if (isComment(c)) {
@@ -294,19 +360,20 @@ function dsl2ml(dslStr, problem, _debug) {
   }
 
   function isWhitespace(s) {
-    // make sure you dont actually want isNewlineChar()
+    // Make sure you dont actually want isNewlineChar()
     return s === $$SPACE || s === $$TAB;
   }
 
   function isNewlineChar(s) {
     return s === $$CR || s === $$LF;
   }
+
   function atEol(c) {
     return isNewlineChar(c) || isComment(c) || isEof();
   }
 
   function isLineEnd(s) {
-    // the line ends at a newline or a comment
+    // The line ends at a newline or a comment
     return s === $$CR || s === $$LF || s === $$HASH;
   }
 
@@ -321,7 +388,7 @@ function dsl2ml(dslStr, problem, _debug) {
   function expectEol() {
     skipWhitespaces();
     if (dslPointer < len) {
-      let c = read();
+      const c = read();
       if (c === $$HASH) {
         skipComment();
       } else if (isNewlineChar(c)) {
@@ -337,7 +404,7 @@ function dsl2ml(dslStr, problem, _debug) {
   }
 
   function parseStatement() {
-    // either:
+    // Either:
     // - start with colon: var decl
     // - start with hash: line comment
     // - empty: empty
@@ -356,13 +423,12 @@ function dsl2ml(dslStr, problem, _debug) {
       default:
         if (!isEof()) {
           parseVoidConstraint();
-          return;
         }
     }
   }
 
   function parseVar() {
-    skip(); // is($$COLON)
+    skip(); // Already is($$COLON)
     skipWhitespaces();
     let nameNames = parseIdentifier();
     skipWhitespaces();
@@ -375,13 +441,15 @@ function dsl2ml(dslStr, problem, _debug) {
         skipWhitespaces();
       } while (!isEof() && read() === $$COMMA);
     }
+
     if (read() === $$EQ) {
       skip();
       skipWhitespaces();
     }
-    let domain = parseDomain();
+
+    const domain = parseDomain();
     skipWhitespaces();
-    let mod = parseModifier();
+    const mod = parseModifier();
     expectEol();
 
     if (typeof nameNames === 'string') {
@@ -390,13 +458,14 @@ function dsl2ml(dslStr, problem, _debug) {
       nameNames.forEach(name => addParsedVar(name, domain, mod));
     }
   }
+
   function addParsedVar(name, domain, mod) {
     return addVar(name, domain, mod, false, true, THROW);
   }
 
   function parseIdentifier() {
     if (read() === $$SQUOTE) return parseQuotedIdentifier();
-    else return parseUnquotedIdentifier();
+    return parseUnquotedIdentifier();
   }
 
   function parseQuotedIdentifier() {
@@ -404,20 +473,22 @@ function dsl2ml(dslStr, problem, _debug) {
 
     let ident = '';
     while (!isEof()) {
-      let c = read();
+      const c = read();
       if (c === $$SQUOTE) break;
-      if (c !== $$HASH && isLineEnd(c)) THROW('Quoted identifier wasnt closed at eol');
+      if (c !== $$HASH && isLineEnd(c))
+        THROW('Quoted identifier wasnt closed at eol');
       ident += String.fromCharCode(c);
       skip();
     }
+
     if (isEof()) THROW('Quoted identifier wasnt closed at eof');
     if (!ident) THROW('Expected to parse identifier, found none');
-    skip(); // quote
-    return ident; // return unquoted ident
+    skip(); // Quote
+    return ident; // Return unquoted ident
   }
 
   function parseUnquotedIdentifier() {
-    // anything terminated by whitespace
+    // Anything terminated by whitespace
     let c = read();
     let ident = '';
     if (c >= $$0 && c <= $$9) THROW('Unquoted ident cant start with number');
@@ -427,6 +498,7 @@ function dsl2ml(dslStr, problem, _debug) {
       ident += String.fromCharCode(c);
       skip();
     }
+
     if (!ident) THROW('Expected to parse identifier, found none');
     return ident;
   }
@@ -442,6 +514,7 @@ function dsl2ml(dslStr, problem, _debug) {
       case $$HASH:
         return false;
     }
+
     if (isWhite(c)) return false;
     return true;
   }
@@ -455,26 +528,27 @@ function dsl2ml(dslStr, problem, _debug) {
     // (comma's optional and ignored)
 
     let domain;
-    let c = read();
+    const c = read();
     switch (c) {
       case $$LEFTBRACK:
-
         is($$LEFTBRACK, 'domain start');
         skipWhitespaces();
 
         domain = [];
 
-        if (read() === $$LEFTBRACK) { // range inside the domain that is wrapped in brakcets
+        if (read() === $$LEFTBRACK) {
+          // Range inside the domain that is wrapped in brakcets
           do {
             skip();
             skipWhitespaces();
-            let lo = parseNumber();
+            const lo = parseNumber();
             skipWhitespaces();
             if (read() === $$COMMA) {
               skip();
               skipWhitespaces();
             }
-            let hi = parseNumber();
+
+            const hi = parseNumber();
             skipWhitespaces();
             is($$RIGHTBRACK, 'range-end');
             skipWhitespaces();
@@ -487,16 +561,17 @@ function dsl2ml(dslStr, problem, _debug) {
             }
           } while (read() === $$LEFTBRACK);
         } else {
-          // individual ranges not wrapped
+          // Individual ranges not wrapped
           while (read() !== $$RIGHTBRACK) {
             skipWhitespaces();
-            let lo = parseNumber();
+            const lo = parseNumber();
             skipWhitespaces();
             if (read() === $$COMMA) {
               skip();
               skipWhitespaces();
             }
-            let hi = parseNumber();
+
+            const hi = parseNumber();
             skipWhitespaces();
 
             domain.push(lo, hi);
@@ -509,7 +584,8 @@ function dsl2ml(dslStr, problem, _debug) {
         }
 
         is($$RIGHTBRACK, 'domain-end');
-        if (domain.length === 0) THROW('Empty domain [] in dsl, this problem will always reject');
+        if (domain.length === 0)
+          THROW('Empty domain [] in dsl, this problem will always reject');
         return domain;
 
       case $$STAR:
@@ -526,7 +602,7 @@ function dsl2ml(dslStr, problem, _debug) {
       case $$7:
       case $$8:
       case $$9:
-        let v = parseNumber();
+        const v = parseNumber();
         skipWhitespaces();
         return [v, v];
     }
@@ -538,11 +614,11 @@ function dsl2ml(dslStr, problem, _debug) {
     if (read() !== $$AT) return;
     skip();
 
-    let mod = {};
+    const mod = {};
 
     let stratName = '';
     while (true) {
-      let c = read();
+      const c = read();
       if (!((c >= $$a && c <= $$z) || (c >= $$A && c <= $$Z))) break;
       stratName += String.fromCharCode(c);
       skip();
@@ -581,7 +657,15 @@ function dsl2ml(dslStr, problem, _debug) {
   function parseList(mod) {
     skipWhitespaces();
 
-    if (!(readD(0) === $$p && readD(1) === $$r && readD(2) === $$i && readD(3) === $$o && readD(4) === $$LEFTPAREN)) {
+    if (
+      !(
+        readD(0) === $$p &&
+        readD(1) === $$r &&
+        readD(2) === $$i &&
+        readD(3) === $$o &&
+        readD(4) === $$LEFTPAREN
+      )
+    ) {
       THROW('Expecting the priorities to follow the `@list`');
     }
 
@@ -599,30 +683,49 @@ function dsl2ml(dslStr, problem, _debug) {
       repeat = false;
       skipWhitespaces();
       switch (read()) {
-        case $$m: // matrix
-          if (readD(1) === $$a && readD(2) === $$t && readD(3) === $$r && readD(4) === $$i && readD(5) === $$x && readD(6) === $$LEFTPAREN) {
+        case $$m: // Matrix
+          if (
+            readD(1) === $$a &&
+            readD(2) === $$t &&
+            readD(3) === $$r &&
+            readD(4) === $$i &&
+            readD(5) === $$x &&
+            readD(6) === $$LEFTPAREN
+          ) {
             // TOFIX: there is no validation here. apply stricter and safe matrix parsing
 
             dslPointer += 7;
-            let start = dslPointer;
+            const start = dslPointer;
             while (read() !== $$RIGHTPAREN && !isEof()) skip();
-            if (isEof()) THROW('The matrix must be closed by a `)` but did not find any');
-            ASSERT(read() === $$RIGHTPAREN, 'code should only stop at eof or )');
+            if (isEof())
+              THROW('The matrix must be closed by a `)` but did not find any');
+            ASSERT(
+              read() === $$RIGHTPAREN,
+              'code should only stop at eof or )'
+            );
 
-            let matrix = substr_expensive(start, dslPointer);
-            let code = 'return ' + matrix;
-            let func = Function(code);
+            const matrix = substr_expensive(start, dslPointer);
+            const code = 'return ' + matrix;
+            const func = new Function(code);
             /* eslint no-new-func: "off" */
             mod.matrix = func();
 
-            is($$RIGHTPAREN, 'end of matrix'); // kind of a redundant double check. could also just skip() here.
+            is($$RIGHTPAREN, 'end of matrix'); // Kind of a redundant double check. could also just skip() here.
 
             repeat = true;
           }
+
           break;
 
-        case $$l: // legend
-          if (readD(1) === $$e && readD(2) === $$g && readD(3) === $$e && readD(4) === $$n && readD(5) === $$d && readD(6) === $$LEFTPAREN) {
+        case $$l: // Legend
+          if (
+            readD(1) === $$e &&
+            readD(2) === $$g &&
+            readD(3) === $$e &&
+            readD(4) === $$n &&
+            readD(5) === $$d &&
+            readD(6) === $$LEFTPAREN
+          ) {
             dslPointer += 7;
             skipWhitespaces();
             mod.legend = parseNumList();
@@ -631,10 +734,18 @@ function dsl2ml(dslStr, problem, _debug) {
 
             repeat = true;
           }
+
           break;
 
-        case $$e: // expand
-          if (readD(1) === $$x && readD(2) === $$p && readD(3) === $$a && readD(4) === $$n && readD(5) === $$d && readD(6) === $$LEFTPAREN) {
+        case $$e: // Expand
+          if (
+            readD(1) === $$x &&
+            readD(2) === $$p &&
+            readD(3) === $$a &&
+            readD(4) === $$n &&
+            readD(5) === $$d &&
+            readD(6) === $$LEFTPAREN
+          ) {
             dslPointer += 7;
             skipWhitespaces();
             mod.expandVectorsWith = parseNumber();
@@ -643,39 +754,40 @@ function dsl2ml(dslStr, problem, _debug) {
 
             repeat = true;
           }
+
           break;
       }
     }
   }
 
   function skipComment() {
-    is($$HASH, 'comment start'); //is('#', 'comment hash');
+    is($$HASH, 'comment start'); // is('#', 'comment hash');
     while (!isEof() && !isNewlineChar(read())) skip();
     if (!isEof()) skip();
   }
 
   function parseVoidConstraint() {
-    // parse a constraint that does not return a value itself
+    // Parse a constraint that does not return a value itself
 
     // first try to parse single value constraints without value like markov() and diff()
     if (parseUexpr()) return;
 
-    // so the first value must be a value returning expr
+    // So the first value must be a value returning expr
     parseComplexVoidConstraint();
 
     expectEol();
   }
 
   function parseComplexVoidConstraint() {
-    // parse a constraint that at least starts with a Vexpr but ultimately doesnt return anything
+    // Parse a constraint that at least starts with a Vexpr but ultimately doesnt return anything
 
-    let indexA = parseVexpr(undefined, true);
+    const indexA = parseVexpr(undefined, true);
 
     skipWhitespaces();
     // `A==B<eof>` then A==B would be part of A and the parser would want to parse a cop here. there's a test case.
     if (isEof()) THROW('Expected to parse a cop but reached eof instead');
 
-    let cop = parseCop();
+    const cop = parseCop();
     skipWhitespaces();
 
     if (cop === '=') {
@@ -683,7 +795,7 @@ function dsl2ml(dslStr, problem, _debug) {
       parseAssignment(indexA);
     } else {
       ASSERT(cop, 'the cop parser should require to parse a valid cop');
-      let indexB = parseVexpr();
+      const indexB = parseVexpr();
       compileVoidConstraint(indexA, cop, indexB);
     }
   }
@@ -762,7 +874,7 @@ function dsl2ml(dslStr, problem, _debug) {
 
       case '^':
         startConstraint(ML_XOR);
-        encode16bit(2); // this brings the op size in line with all other ops. kind of a waste but so be it.
+        encode16bit(2); // This brings the op size in line with all other ops. kind of a waste but so be it.
         encode16bit(indexA < indexB ? indexA : indexB);
         encode16bit(indexA < indexB ? indexB : indexA);
         break;
@@ -794,19 +906,19 @@ function dsl2ml(dslStr, problem, _debug) {
   }
 
   function parseAssignment(indexC) {
-    let indexA = parseVexpr(indexC);
+    const indexA = parseVexpr(indexC);
     skipWhitespaces();
-    let c = read();
+    const c = read();
     if (isEof() || isLineEnd(c)) {
-      // any var, literal, or group without "top-level" op (`A=5`, `A=X`, `A=(B+C)`, `A=sum(...)`, etc)
+      // Any var, literal, or group without "top-level" op (`A=5`, `A=X`, `A=(B+C)`, `A=sum(...)`, etc)
       if (indexA !== indexC) {
         compileVoidConstraint(indexA, '==', indexC);
       }
     } else {
-      let rop = parseRop();
+      const rop = parseRop();
       if (!rop) THROW('Expecting right paren or rop, got [' + rop + ']');
       skipWhitespaces();
-      let indexB = parseVexpr();
+      const indexB = parseVexpr();
       return compileValueConstraint(indexA, rop, indexB, indexC);
     }
   }
@@ -883,7 +995,7 @@ function dsl2ml(dslStr, problem, _debug) {
 
       case '+':
         startConstraint(ML_SUM);
-        encode16bit(2); // count
+        encode16bit(2); // Count
         encode16bit(indexA < indexB ? indexA : indexB);
         encode16bit(indexA < indexB ? indexB : indexA);
         encode16bit(indexC);
@@ -921,13 +1033,18 @@ function dsl2ml(dslStr, problem, _debug) {
         THROW('Expecting right paren or rop, got [' + rop + ']');
     }
 
-    if (wasReifier && indexC === lastAssignmentIndex && indexC === lastUnknownIndex) setDomain(indexC, domain_createRange(0, 1));
+    if (
+      wasReifier &&
+      indexC === lastAssignmentIndex &&
+      indexC === lastUnknownIndex
+    )
+      setDomain(indexC, domain_createRange(0, 1));
 
     return indexC;
   }
 
   function parseCop() {
-    let c = read();
+    const c = read();
     switch (c) {
       case $$EQ:
         skip();
@@ -935,31 +1052,37 @@ function dsl2ml(dslStr, problem, _debug) {
           skip();
           return '==';
         }
+
         return '=';
       case $$BANG:
         skip();
-        let r = read();
+        const r = read();
         if (r === $$EQ) {
           skip();
           return '!=';
         }
+
         if (r === $$AND) {
           skip();
           return '!&';
         }
+
         if (r === $$XOR) {
           skip();
           return '!^';
         }
+
         if (r === $$OR) {
           skip();
           return '!|';
         }
+
         if (r === $$DASH && readD(1) === $$GT) {
           skip();
           skip();
           return '!->';
         }
+
         return THROW('Unknown cop that starts with [!]');
       case $$LT:
         skip();
@@ -967,6 +1090,7 @@ function dsl2ml(dslStr, problem, _debug) {
           skip();
           return '<=';
         }
+
         return '<';
       case $$GT:
         skip();
@@ -974,6 +1098,7 @@ function dsl2ml(dslStr, problem, _debug) {
           skip();
           return '>=';
         }
+
         return '>';
       case $$DASH:
         if (readD(1) === $$GT) {
@@ -981,7 +1106,8 @@ function dsl2ml(dslStr, problem, _debug) {
           skip();
           return '->';
         }
-        break; // error
+
+        break; // Error
       case $$AND:
         skip();
         return '&';
@@ -994,6 +1120,7 @@ function dsl2ml(dslStr, problem, _debug) {
       case $$HASH:
         return THROW('Expected to parse a cop but found a comment instead');
     }
+
     if (isEof()) THROW('Expected to parse a cop but reached eof instead');
     THROW('Unknown cop char: `' + c + '`');
   }
@@ -1006,9 +1133,9 @@ function dsl2ml(dslStr, problem, _debug) {
           skip();
           is($$QM, 'reifier suffix');
           return '==?';
-        } else {
-          return '=';
         }
+
+        return '=';
 
       case $$BANG:
         skip();
@@ -1025,6 +1152,7 @@ function dsl2ml(dslStr, problem, _debug) {
         } else {
           THROW('invalid rop that starts with a bang');
         }
+
         is($$QM, 'reifier suffix');
         return r;
 
@@ -1034,10 +1162,10 @@ function dsl2ml(dslStr, problem, _debug) {
           skip();
           is($$QM, 'reifier suffix');
           return '<=?';
-        } else {
-          is($$QM, 'reifier suffix');
-          return '<?';
         }
+
+        is($$QM, 'reifier suffix');
+        return '<?';
 
       case $$GT:
         skip();
@@ -1045,10 +1173,10 @@ function dsl2ml(dslStr, problem, _debug) {
           skip();
           is($$QM, 'reifier suffix');
           return '>=?';
-        } else {
-          is($$QM, 'reifier suffix');
-          return '>?';
         }
+
+        is($$QM, 'reifier suffix');
+        return '>?';
 
       case $$OR:
         skip();
@@ -1082,46 +1210,98 @@ function dsl2ml(dslStr, problem, _debug) {
   }
 
   function parseUexpr() {
-    // it's not very efficient (we could parse an ident before and check that result here) but it'll work for now
+    // It's not very efficient (we could parse an ident before and check that result here) but it'll work for now
 
-    let c = read();
+    const c = read();
 
-    // distinct is legacy support, same as diff()
-    if (c === $$d && readD(1) === $$i && readD(2) === $$s && readD(3) === $$t && readD(4) === $$i && readD(5) === $$n && readD(6) === $$c && readD(7) === $$t && readD(8) === $$LEFTPAREN) {
+    // Distinct is legacy support, same as diff()
+    if (
+      c === $$d &&
+      readD(1) === $$i &&
+      readD(2) === $$s &&
+      readD(3) === $$t &&
+      readD(4) === $$i &&
+      readD(5) === $$n &&
+      readD(6) === $$c &&
+      readD(7) === $$t &&
+      readD(8) === $$LEFTPAREN
+    ) {
       parseCalledListConstraint(ML_DIFF, 9);
       return true;
     }
-    if (c === $$d && readD(1) === $$i && readD(2) === $$f && readD(3) === $$f && readD(4) === $$LEFTPAREN) {
+
+    if (
+      c === $$d &&
+      readD(1) === $$i &&
+      readD(2) === $$f &&
+      readD(3) === $$f &&
+      readD(4) === $$LEFTPAREN
+    ) {
       parseCalledListConstraint(ML_DIFF, 5);
       return true;
     }
 
-    if (c === $$a && readD(1) === $$l && readD(2) === $$l && readD(3) === $$LEFTPAREN) {
+    if (
+      c === $$a &&
+      readD(1) === $$l &&
+      readD(2) === $$l &&
+      readD(3) === $$LEFTPAREN
+    ) {
       parseCalledListConstraint(ML_ALL, 4);
       return true;
     }
 
-    if (c === $$n && readD(1) === $$a && readD(2) === $$l && readD(3) === $$l && readD(4) === $$LEFTPAREN) {
+    if (
+      c === $$n &&
+      readD(1) === $$a &&
+      readD(2) === $$l &&
+      readD(3) === $$l &&
+      readD(4) === $$LEFTPAREN
+    ) {
       parseCalledListConstraint(ML_NALL, 5);
       return true;
     }
 
-    if (c === $$s && readD(1) === $$a && readD(2) === $$m && readD(3) === $$e && readD(4) === $$LEFTPAREN) {
+    if (
+      c === $$s &&
+      readD(1) === $$a &&
+      readD(2) === $$m &&
+      readD(3) === $$e &&
+      readD(4) === $$LEFTPAREN
+    ) {
       parseCalledListConstraint(ML_SAME, 5);
       return true;
     }
 
-    if (c === $$s && readD(1) === $$o && readD(2) === $$m && readD(3) === $$e && readD(4) === $$LEFTPAREN) {
+    if (
+      c === $$s &&
+      readD(1) === $$o &&
+      readD(2) === $$m &&
+      readD(3) === $$e &&
+      readD(4) === $$LEFTPAREN
+    ) {
       parseCalledListConstraint(ML_SOME, 5);
       return true;
     }
 
-    if (c === $$n && readD(1) === $$o && readD(2) === $$n && readD(3) === $$e && readD(4) === $$LEFTPAREN) {
+    if (
+      c === $$n &&
+      readD(1) === $$o &&
+      readD(2) === $$n &&
+      readD(3) === $$e &&
+      readD(4) === $$LEFTPAREN
+    ) {
       parseCalledListConstraint(ML_NONE, 5);
       return true;
     }
 
-    if (c === $$x && readD(1) === $$n && readD(2) === $$o && readD(3) === $$r && readD(4) === $$LEFTPAREN) {
+    if (
+      c === $$x &&
+      readD(1) === $$n &&
+      readD(2) === $$o &&
+      readD(3) === $$r &&
+      readD(4) === $$LEFTPAREN
+    ) {
       parseCalledListConstraint(ML_XNOR, 5);
       return true;
     }
@@ -1132,7 +1312,7 @@ function dsl2ml(dslStr, problem, _debug) {
   function parseCalledListConstraint(opcode, delta) {
     dslPointer += delta;
     skipWhitespaces();
-    let vals = parseVexpList();
+    const vals = parseVexpList();
     ASSERT(vals.length <= 255, 'dont do lists with more than 255 vars :(');
     startConstraint(opcode);
     encode16bit(vals.length);
@@ -1143,10 +1323,10 @@ function dsl2ml(dslStr, problem, _debug) {
   }
 
   function parseVexpList() {
-    let list = [];
+    const list = [];
     skipWhitespaces();
     while (!isEof() && read() !== $$RIGHTPAREN) {
-      let index = parseVexpr();
+      const index = parseVexpr();
       list.push(index);
 
       skipWhitespaces();
@@ -1161,41 +1341,58 @@ function dsl2ml(dslStr, problem, _debug) {
   }
 
   function parseVexpr(resultIndex, canBeUnknown) {
-    // valcall, ident, number, group
+    // Types: valcall, ident, number, group
     // ALWAYS return a var or constant INDEX!
 
     // resultIndex is only passed on if this was an explicit
     // assignment (like the index of `X` in `X = sum(A B C)`)
 
-    let c = read();
+    const c = read();
     let index;
-    if (c === $$LEFTPAREN) {
+    if (c >= $$0 && c <= $$9) {
+      const num = parseNumber();
+      index = addVar(undefined, num, false, false, true);
+    } else if (c === $$LEFTPAREN) {
       index = parseGrouping();
     } else if (c === $$LEFTBRACK) {
-      let domain = parseDomain();
+      const domain = parseDomain();
       index = addVar(undefined, domain, false, false, true);
-    } else if (c >= $$0 && c <= $$9) {
-      let num = parseNumber();
-      index = addVar(undefined, num, false, false, true);
     } else {
-      let ident = parseIdentifier();
+      const ident = parseIdentifier();
 
       if (read() === $$LEFTPAREN) {
         if (ident === 'sum') index = parseArgs(ML_SUM, resultIndex, false);
-        else if (ident === 'product') index = parseArgs(ML_PRODUCT, resultIndex, false);
-        else if (ident === 'all?') index = parseArgs(ML_ISALL, resultIndex, true);
-        else if (ident === 'diff?') index = parseArgs(ML_ISDIFF, resultIndex, true);
-        else if (ident === 'nall?') index = parseArgs(ML_ISNALL, resultIndex, true);
-        else if (ident === 'none?') index = parseArgs(ML_ISNONE, resultIndex, true);
-        else if (ident === 'same?') index = parseArgs(ML_ISSAME, resultIndex, true);
-        else if (ident === 'some?') index = parseArgs(ML_ISSOME, resultIndex, true);
+        else if (ident === 'product')
+          index = parseArgs(ML_PRODUCT, resultIndex, false);
+        else if (ident === 'all?')
+          index = parseArgs(ML_ISALL, resultIndex, true);
+        else if (ident === 'diff?')
+          index = parseArgs(ML_ISDIFF, resultIndex, true);
+        else if (ident === 'nall?')
+          index = parseArgs(ML_ISNALL, resultIndex, true);
+        else if (ident === 'none?')
+          index = parseArgs(ML_ISNONE, resultIndex, true);
+        else if (ident === 'same?')
+          index = parseArgs(ML_ISSAME, resultIndex, true);
+        else if (ident === 'some?')
+          index = parseArgs(ML_ISSOME, resultIndex, true);
         else THROW('Unknown reifier constraint func: ' + ident);
       } else {
-        // implicitly declare unknown vars as [SUB,SUP]
+        // Implicitly declare unknown vars as [SUB,SUP]
         index = name2index(ident, false, true);
         if (index < 0) {
-          if (canBeUnknown) lastUnknownIndex = index = addVar(ident, undefined, false, false, true);
-          else THROW('CONSTRAINT_VARS_SHOULD_BE_DECLARED; Unknown var [' + ident + ']');
+          if (canBeUnknown)
+            lastUnknownIndex = index = addVar(
+              ident,
+              undefined,
+              false,
+              false,
+              true
+            );
+          else
+            THROW(
+              'CONSTRAINT_VARS_SHOULD_BE_DECLARED; Unknown var [' + ident + ']'
+            );
         }
       }
     }
@@ -1211,41 +1408,74 @@ function dsl2ml(dslStr, problem, _debug) {
     let indexA = parseVexpr();
     skipWhitespaces();
 
-    // just wrapping a vexpr is okay, otherwise it needs a rop
+    // Just wrapping a vexpr is okay, otherwise it needs a rop
     if (read() !== $$RIGHTPAREN) {
-      let rop = parseRop();
+      const rop = parseRop();
       if (!rop) THROW('Expecting right paren or rop');
       skipWhitespaces();
-      let indexB = parseVexpr();
-      let indexC = addVar(undefined, rop[rop.length - 1] === '?' ? [0, 1] : undefined, false, false, true);
+      const indexB = parseVexpr();
+      const indexC = addVar(
+        undefined,
+        rop[rop.length - 1] === '?' ? [0, 1] : undefined,
+        false,
+        false,
+        true
+      );
       indexA = compileValueConstraint(indexA, rop, indexB, indexC);
       skipWhitespaces();
     }
+
     is($$RIGHTPAREN, 'group closer');
     return indexA;
   }
 
   function parseNumber() {
-    let numstr = parseNumstr();
+    const numstr = parseNumstr();
     if (!numstr) {
-      THROW('Expecting to parse a number but did not find any digits c=[ord(' + read() + ')=' + String.fromCharCode(read()) + ']');
+      THROW(
+        'Expecting to parse a number but did not find any digits c=[ord(' +
+          read() +
+          ')=' +
+          String.fromCharCode(read()) +
+          ']'
+      );
     }
+
     return parseInt(numstr, 10);
   }
 
   function parseArgs(op, resultIndex, defaultBoolResult) {
     is($$LEFTPAREN, 'args call opener');
     skipWhitespaces();
-    let refs = parseVexpList();
+    const refs = parseVexpList();
 
-    // note: the var may not declared if the constraint was anonymously grouped (ie `(sum(A B)>10)`)
-    if (resultIndex === undefined) resultIndex = addVar(undefined, defaultBoolResult ? [0, 1] : undefined, false, false, true);
-    else if (resultIndex === lastAssignmentIndex && resultIndex === lastUnknownIndex && defaultBoolResult) setDomain(resultIndex, domain_createRange(0, 1));
+    // Note: the var may not declared if the constraint was anonymously grouped (ie `(sum(A B)>10)`)
+    if (resultIndex === undefined)
+      resultIndex = addVar(
+        undefined,
+        defaultBoolResult ? [0, 1] : undefined,
+        false,
+        false,
+        true
+      );
+    else if (
+      resultIndex === lastAssignmentIndex &&
+      resultIndex === lastUnknownIndex &&
+      defaultBoolResult
+    )
+      setDomain(resultIndex, domain_createRange(0, 1));
 
-    TRACE('parseArgs refs:', resultIndex, ' = all(', refs, '), defaultBoolResult:', defaultBoolResult);
+    TRACE(
+      'parseArgs refs:',
+      resultIndex,
+      ' = all(',
+      refs,
+      '), defaultBoolResult:',
+      defaultBoolResult
+    );
 
     startConstraint(op);
-    encode16bit(refs.length); // count
+    encode16bit(refs.length); // Count
     refs.sort((a, b) => a - b);
     refs.forEach(encode16bit);
     encode16bit(resultIndex);
@@ -1258,16 +1488,17 @@ function dsl2ml(dslStr, problem, _debug) {
   function parseNumstr() {
     let numstr = '';
     while (!isEof()) {
-      let c = read();
+      const c = read();
       if (c < $$0 || c > $$9) break;
       numstr += String.fromCharCode(c);
       skip();
     }
+
     return numstr;
   }
 
   function parseNumList() {
-    let nums = [];
+    const nums = [];
 
     skipWhitespaces();
     let numstr = parseNumstr();
@@ -1278,21 +1509,26 @@ function dsl2ml(dslStr, problem, _debug) {
         ++dslPointer;
         skipWhitespaces();
       }
+
       numstr = parseNumstr();
     }
 
-    if (!nums.length) THROW('Expected to parse a list of at least some numbers but found none');
+    if (!nums.length)
+      THROW('Expected to parse a list of at least some numbers but found none');
     return nums;
   }
 
   function parseIdentsTo(target) {
-    let idents = parseIdents(target);
-    if (!idents.length) THROW('Expected to parse a list of at least some identifiers but found none');
+    const idents = parseIdents(target);
+    if (!idents.length)
+      THROW(
+        'Expected to parse a list of at least some identifiers but found none'
+      );
     return idents;
   }
 
   function parseIdents(target) {
-    let idents = [];
+    const idents = [];
 
     skipWhitespaces();
     while (!isEof()) {
@@ -1304,12 +1540,12 @@ function dsl2ml(dslStr, problem, _debug) {
         if (!idents.length) THROW('Leading comma not supported');
         skip();
         skipWhitespaces();
-        if (atEol(read())) THROW('Trailing comma not supported'); // mmmm or should we? dont believe it to be relevant for this language
+        if (atEol(read())) THROW('Trailing comma not supported'); // Mmmm or should we? dont believe it to be relevant for this language
         c = read();
         if (c === $$COMMA) THROW('Double comma not supported');
       }
 
-      let ident = parseIdentifier();
+      const ident = parseIdentifier();
       idents.push(ident);
 
       skipWhitespaces();
@@ -1322,28 +1558,30 @@ function dsl2ml(dslStr, problem, _debug) {
   function readLineRest() {
     let str = '';
     while (!isEof()) {
-      let c = read();
+      const c = read();
       if (isNewlineChar(c)) break;
       str += String.fromCharCode(c);
       skip();
     }
+
     return str;
   }
 
   function parseAtRule() {
     is($$AT);
-    // mostly temporary hacks while the dsl stabilizes...
+    // Mostly temporary hacks while the dsl stabilizes...
 
-    let ruleName = parseIdentifier();
+    const ruleName = parseIdentifier();
 
     if (ruleName === 'custom') {
       skipWhitespaces();
-      let ident = parseIdentifier();
+      const ident = parseIdentifier();
       skipWhitespaces();
       if (read() === $$EQ) {
         skip();
         skipWhitespaces();
       }
+
       switch (ident) {
         case 'var-strat':
           parseVarStrat();
@@ -1353,43 +1591,47 @@ function dsl2ml(dslStr, problem, _debug) {
           break;
         case 'set-valdist':
           skipWhitespaces();
-          let target = parseIdentifier();
-          let config = parseRestCustom();
+          const target = parseIdentifier();
+          const config = parseRestCustom();
           setValDist(name2index(target, true), JSON.parse(config));
           break;
         case 'noleaf': {
           skipWhitespaces();
 
-          let idents = parseIdentsTo(undefined);
+          const idents = parseIdentsTo(undefined);
           for (let i = 0, len = idents.length; i < len; ++i) {
-            // debug vars are never considered leaf vars until we change that (to something else and update this to something that still does the same thing)
+            // Debug vars are never considered leaf vars until we change that (to something else and update this to something that still does the same thing)
             // this is for testing as a simple tool to prevent many trivial optimizations to kick in. it's not flawless.
 
             // encode 3x to artificially inflate the count beyond most tricks
             // these should not be deduped... but keep in mind that a noleafed alias gets double the counts
-            let index = name2index(idents[i]);
+            const index = name2index(idents[i]);
             for (let j = 0; j < 3; ++j) {
               encode8bit(ML_NOLEAF);
               encode16bit(index);
             }
           }
+
           break;
         }
+
         case 'nobool': {
-          // debugging tool; bounty should consider this var a non-booly regardless of whether it actually is
+          // Debugging tool; bounty should consider this var a non-booly regardless of whether it actually is
           skipWhitespaces();
 
-          let idents = parseIdentsTo(undefined);
+          const idents = parseIdentsTo(undefined);
           for (let i = 0, len = idents.length; i < len; ++i) {
-            let index = name2index(idents[i]);
+            const index = name2index(idents[i]);
             encode8bit(ML_NOBOOL);
             encode16bit(index);
           }
+
           break;
         }
+
         case 'free':
           skipWhitespaces();
-          let size = parseNumber();
+          const size = parseNumber();
           TRACE('Found a jump of', size);
           freeDirective = size;
           break;
@@ -1404,12 +1646,16 @@ function dsl2ml(dslStr, problem, _debug) {
     } else {
       THROW('Unknown atrule [' + ruleName + ']');
     }
+
     expectEol();
   }
 
   function setValDist(varIndex, dist) {
     ASSERT(typeof varIndex === 'number', 'expecting var indexes');
-    ASSERT(problem.valdist[varIndex] === undefined, 'not expecting valdists to be set twice for the same var');
+    ASSERT(
+      problem.valdist[varIndex] === undefined,
+      'not expecting valdists to be set twice for the same var'
+    );
     problem.valdist[varIndex] = dist;
   }
 
@@ -1417,7 +1663,7 @@ function dsl2ml(dslStr, problem, _debug) {
     TRACE('compileJump(' + size + '), mlPointer=', mlPointer);
     ASSERT(size > 0, 'dont call this function on size=0');
     switch (size) {
-      case 0: // dead code. test code should catch these cases at call site. runtime can still just ignore it.
+      case 0: // Dead code. test code should catch these cases at call site. runtime can still just ignore it.
         break; // ignore. only expliclty illustrates no free space
       case 1:
         encode8bit(ML_NOOP);
@@ -1456,7 +1702,7 @@ function dsl2ml(dslStr, problem, _debug) {
           encode32bit(size - SIZEOF_W);
           mlPointer += size - SIZEOF_W;
         }
-        // buffer is explicitly fill(0)'d so no need to clear it out here (otherwise we probably should)
+      // Buffer is explicitly fill(0)'d so no need to clear it out here (otherwise we probably should)
     }
   }
 
@@ -1468,22 +1714,26 @@ function dsl2ml(dslStr, problem, _debug) {
     // @custom var-strat [fallback] [=] throw
     // @custom var-strat [fallback] [inverted] [list] (a b c)
 
-    let fallback = false; // list only
-    let inverted = false; // list only
-    let issed = false; // had equal sign (illegal for list)
+    let fallback = false; // List only
+    let inverted = false; // List only
+    let issed = false; // Had equal sign (illegal for list)
 
     if (read() === $$f) {
-      let ident = parseIdentifier();
-      if (ident !== 'fallback') THROW('Expecting var strat name, found [' + ident + ']');
+      const ident = parseIdentifier();
+      if (ident !== 'fallback')
+        THROW('Expecting var strat name, found [' + ident + ']');
       fallback = true;
       skipWhitespaces();
     }
+
     if (read() === $$i) {
-      let ident = parseIdentifier();
-      if (ident !== 'inverted') THROW('Expecting var strat name, found [' + ident + ']');
+      const ident = parseIdentifier();
+      if (ident !== 'inverted')
+        THROW('Expecting var strat name, found [' + ident + ']');
       inverted = true;
       skipWhitespaces();
     }
+
     if (read() === $$EQ) {
       skip();
       issed = true;
@@ -1493,9 +1743,15 @@ function dsl2ml(dslStr, problem, _debug) {
     if (read() === $$LEFTPAREN) {
       parseVarStratList(fallback, inverted);
     } else {
-      let ident = parseIdentifier();
+      const ident = parseIdentifier();
 
-      if (ident === 'naive' || ident === 'size' || ident === 'min' || ident === 'max' || ident === 'throw') {
+      if (
+        ident === 'naive' ||
+        ident === 'size' ||
+        ident === 'min' ||
+        ident === 'max' ||
+        ident === 'throw'
+      ) {
         if (inverted) THROW('The `inverted` keyword is only used with a list');
         if (fallback) {
           addFallbackToVarStrat(ident);
@@ -1511,16 +1767,18 @@ function dsl2ml(dslStr, problem, _debug) {
         THROW('Unknown var strat [' + ident + ']');
       }
     }
+
     skipWhitespaces();
   }
+
   function parseVarStratList(fallback, inverted) {
     is($$LEFTPAREN, 'List open');
     skipWhitespaces();
-    let idents = parseIdents($$RIGHTPAREN);
+    const idents = parseIdents($$RIGHTPAREN);
     skipWhitespaces();
     is($$RIGHTPAREN, 'List must be closed');
 
-    let strat = {type: 'list', inverted, priorityByName: idents};
+    const strat = { type: 'list', inverted, priorityByName: idents };
     if (fallback) {
       addFallbackToVarStrat(strat);
     } else {
@@ -1530,16 +1788,17 @@ function dsl2ml(dslStr, problem, _debug) {
 
   function addFallbackToVarStrat(strat) {
     let vs = problem.input.varstrat;
-    ASSERT(vs, 'should set the var strat before declaring its backup'); // should we just throw for this?
-    if (typeof vs === 'string') vs = problem.input.varstrat = {type: vs};
+    ASSERT(vs, 'should set the var strat before declaring its backup'); // Should we just throw for this?
+    if (typeof vs === 'string') vs = problem.input.varstrat = { type: vs };
 
     while (vs.fallback) {
       if (typeof vs.fallback === 'string') {
-        vs = vs.fallback = {type: vs.fallback};
+        vs = vs.fallback = { type: vs.fallback };
       } else {
         vs = vs.fallback;
       }
     }
+
     vs.fallback = strat;
   }
 
@@ -1564,8 +1823,11 @@ function dsl2ml(dslStr, problem, _debug) {
     if (read() === $$a && readD(1) === $$l && readD(2) === $$l) {
       dslPointer += 3;
     } else {
-      is($$LEFTPAREN, 'ONLY_USE_WITH_SOME_TARGET_VARS; The @targets left-paren');
-      let list = parseIdentsTo($$RIGHTPAREN);
+      is(
+        $$LEFTPAREN,
+        'ONLY_USE_WITH_SOME_TARGET_VARS; The @targets left-paren'
+      );
+      const list = parseIdentsTo($$RIGHTPAREN);
       problem.freezeTargets(list);
       is($$RIGHTPAREN, 'The @targets right-paren');
     }
@@ -1575,15 +1837,33 @@ function dsl2ml(dslStr, problem, _debug) {
 
   function THROW(msg) {
     if (_debug) {
-      TRACE(String.fromCharCode(...dslBuf.slice(0, dslPointer)) + '##|PARSER_IS_HERE[' + msg + ']|##' + String.fromCharCode(...dslBuf.slice(dslPointer)));
+      TRACE(
+        String.fromCharCode(...dslBuf.slice(0, dslPointer)) +
+          '##|PARSER_IS_HERE[' +
+          msg +
+          ']|##' +
+          String.fromCharCode(...dslBuf.slice(dslPointer))
+      );
     }
-    msg += ', source at ' + dslPointer + ' #|#: `' + String.fromCharCode(...dslBuf.slice(Math.max(0, dslPointer - 20), dslPointer)) + '#|#' + String.fromCharCode(...dslBuf.slice(dslPointer, Math.min(dslBuf.length, dslPointer + 20))) + '`';
+
+    msg +=
+      ', source at ' +
+      dslPointer +
+      ' #|#: `' +
+      String.fromCharCode(
+        ...dslBuf.slice(Math.max(0, dslPointer - 20), dslPointer)
+      ) +
+      '#|#' +
+      String.fromCharCode(
+        ...dslBuf.slice(dslPointer, Math.min(dslBuf.length, dslPointer + 20))
+      ) +
+      '`';
     throw new Error(msg);
   }
 }
 
 function ArrayBufferTransferPoly(source, length) {
-  // c/p https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer/transfer
+  // C/p https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer/transfer
 
   if (!(source instanceof ArrayBuffer))
     throw new TypeError('Source must be an instance of ArrayBuffer');
@@ -1595,8 +1875,4 @@ function ArrayBufferTransferPoly(source, length) {
   return destView.buffer;
 }
 
-// BODY_STOP
-
-export {
-  dsl2ml,
-};
+export { dsl2ml };

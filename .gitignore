@@ -5,12 +5,9 @@ logs
 *.log
 
 # Runtime data
-build
+cache
+coverage
 dist
-tests/result.xml
-
-# Grunt intermediate storage (http://gruntjs.com/creating-plugins#storing-task-files)
-.grunt
 
 # Dependency directory
 node_modules
